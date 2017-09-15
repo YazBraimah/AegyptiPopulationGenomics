@@ -85,11 +85,10 @@ rule index:
             os.makedirs(join(HOME_DIR, 'index'))
 
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
-              ' && cp {input.dna} ' + join(WORK_DIR, USER, JOB_ID) +
               ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
-              ' && samtools faidx {input.dna}')
-        shell('bowtie2-build {input.dna} ' + rstrip(DNA, '.fa') + ' > {log} 2>&1')
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID) + '/* ' + join(HOME_DIR, 'index'))
+              ' && samtools faidx ' + DNA)
+        shell('bowtie2-build ' + DNA + ' ' + rstrip(DNA, '.fa')  + ' > {log} 2>&1')
+        shell('cp ' + join(dirname(DNA), '*') + ' ' + join(HOME_DIR, 'index'))
         shell('touch ' + join(HOME_DIR, rstrip(DNA, '.fa') + '.ok'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
@@ -127,11 +126,10 @@ rule Bowtie2:
     input:
         r1 = lambda wildcards: FILES[wildcards.sample]['R1'],
         r2 = lambda wildcards: FILES[wildcards.sample]['R2'],
-        idx = rules.index.output.index
+        idx = rules.index.output.index,
+        bt2i = join(HOME_DIR, rstrip(DNA, '.fa') + '.ok')
     output: 
         bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
-    params: 
-        gtf = GTF
     log:
         join(OUT_DIR, 'Bowtie2', '{sample}', 'bowtie2.log')
     benchmark:
@@ -141,16 +139,16 @@ rule Bowtie2:
     run: 
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(dirname(DNA), rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(HOME_DIR, 'index', rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && bowtie2'                                     
                 ' -p 16'   
-                ' -x ' + os.path.basename(join(WORK_DIR, USER, JOB_ID, rstrip(DNA, '.fa'))) +                    
+                ' -x ' + os.path.basename(rstrip(DNA, '.fa')) +                    
                 ' -1 {wildcards.sample}.R1.fq.gz' 
                 ' -2 {wildcards.sample}.R2.fq.gz'
                 ' | samtools sort -@ 8 -o csorted.bowtie2.bam -'
                 ' > {log} 2>&1')
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'))
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{wildcards.sample}', '{wildcards.sample}' + '.csorted.bowtie2.bam'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
@@ -166,24 +164,25 @@ rule mpileup_fasta:
         bed = BED,
         gtf = GTF
     log:
-        pileup = join(OUT_DIR, 'genome_fasta', 'logs', '{sample}' + '.log')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + '.log')
     benchmark:
-        join(OUT_DIR, 'genome_fasta', 'logs', '{sample}' + '.log')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'benchmark.tsv')
     message: 
         "--- Generating pileup and extracting genome consensus fasta"
     run:
         # Extract a sequence for each transcript in the GTF file.
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(HOME_DIR, 'index', rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {input.bam} {params.cds} {params.bed} {params.gtf} ' + join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID))
-        shell('while read -r i; do'
-                    ' grep $i {params.bed} | grep CDS | samtools mpileup -u -l - -f {input.dna} {input.bam}'
-                    ' | bcftools call -c | vcfutils.pl vcf2fq | seqtk seq -A /dev/stdin/ > $i.fa' 
-                    ' && grep $i {params.gtf} | grep CDS | gffread - -g $i.fa -x $i.CDS.fa'
-                    ' && cat $i.CDS.fa >> {wildcards.sample}.CDS.fasta'
-                    ' && rm $i.fa.fai $i.fa $i.CDS.fa ;'
-            ' done < {cds')
+        shell('cd ' + join(WORK_DIR, USER, JOB_ID) +
+                    ' && while read -r i; do'
+                    ' grep \$i ' + os.path.basename(BED) + ' | grep CDS | samtools mpileup -u -l - -f ' + os.path.basename(DNA) + ' {wildcards.sample}.csorted.bowtie2.bam'
+                    ' | bcftools call -c | vcfutils.pl vcf2fq | seqtk seq -A /dev/stdin/ > \$i.fa' 
+                    ' && grep \$i ' + os.path.basename(GTF) + ' | grep CDS | gffread - -g \$i.fa -x \$i.CDS.fa'
+                    ' && cat \$i.CDS.fa >> ' +  join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.CDS.fasta') +
+                    ' && rm \$i.fa.fai \$i.fa \$i.CDS.fa;'
+            ' done < ' + os.path.basename(CDS))
         shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.CDS.fasta') + ' ' + join(OUT_DIR, 'CDS'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
