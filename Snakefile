@@ -75,18 +75,20 @@ rule index:
         index = join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '.rev.1.bt2'),
         bt2i = join(HOME_DIR, rstrip(DNA, '.fa') + '.ok')
     log:
-        join(HOME_DIR, 'logs', 'bt2.index.log')
+        join(HOME_DIR, 'index', 'bt2.index.log')
     benchmark:
-        join(HOME_DIR, 'logs', 'bt2.index.benchmark.tsv')
+        join(HOME_DIR, 'index', 'bt2.index.benchmark.tsv')
     message: 
         """--- Building bowtie2 genome index """
     run:
+        if not os.path.exists(join(HOME_DIR, 'index')):
+            os.makedirs(join(HOME_DIR, 'index'))
+
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
               ' && cp {input.dna} ' + join(WORK_DIR, USER, JOB_ID) +
               ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
               ' && samtools faidx {input.dna}')
         shell('bowtie2-build {input.dna} ' + rstrip(DNA, '.fa') + ' > {log} 2>&1')
-        shell('mkdir ' + join(HOME_DIR, 'index'))
         shell('mv ' + join(WORK_DIR, USER, JOB_ID) + '/* ' + join(HOME_DIR, 'index'))
         shell('touch ' + join(HOME_DIR, rstrip(DNA, '.fa') + '.ok'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
@@ -125,7 +127,7 @@ rule Bowtie2:
     input:
         r1 = lambda wildcards: FILES[wildcards.sample]['R1'],
         r2 = lambda wildcards: FILES[wildcards.sample]['R2'],
-        idx = rules.index.output.bt2i
+        idx = rules.index.output.index
     output: 
         bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     params: 
@@ -139,17 +141,16 @@ rule Bowtie2:
     run: 
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(dirname(DNA), rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && bowtie2'                                     
                 ' -p 16'   
                 ' -x ' + os.path.basename(join(WORK_DIR, USER, JOB_ID, rstrip(DNA, '.fa'))) +                    
                 ' -1 {wildcards.sample}.R1.fq.gz' 
                 ' -2 {wildcards.sample}.R2.fq.gz'
-                ' | samtools view -bS - > bowtie2.bam'
+                ' | samtools sort -@ 8 -o csorted.bowtie2.bam -'
                 ' > {log} 2>&1')
-        shell('samtools sort bowtie2.bam -o csorted.bowtie2.bam')
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}', 'csorted.bowtie2.bam'))
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
