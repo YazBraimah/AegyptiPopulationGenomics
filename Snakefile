@@ -37,17 +37,17 @@ DNA = config['DNA']
 
 # Full path to an uncompressed GFF file with known gene annotations.
 GTF = config['GTF']
+BED = config['BED']
+CDS = config['CDS']
 
 # Full path to a folder where final output files will be deposited.
 OUT_DIR = config['OUT_DIR']
+WORK_DIR = "/workdir"
+HOME_DIR = config['HOME_DIR']
 
 ## set the working directory for each job (specific for CBSU qsub jobs)
 USER = os.environ.get('USER')
 JOB_ID = os.environ.get('JOB_ID')
-WORK_DIR = "/workdir"
-
-HOME_DIR = config['HOME_DIR']
-# message("The current working directory is " + WORK_DIR)
 
 # Samples and their corresponding filenames.
 # paired-end:
@@ -61,8 +61,9 @@ SAMPLES = sorted(FILES.keys())
 ## Final expected output(s)
 rule all: 
     input: 
-      expand(join(OUT_DIR, 'Bowtie2', '{sample}',  '.csorted.bowtie2.bam'), sample = SAMPLES),
+      expand(join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'), sample = SAMPLES),
       expand(join(OUT_DIR, 'fastQC', '{sample}', '{sample}' + '.R2_fastqc.html'), sample = SAMPLES),
+      expand(join(OUT_DIR, 'CDS', '{sample}' + '.CDS.fasta'), sample = SAMPLES),
       join(OUT_DIR, 'MultiQC', 'multiqc_report.html')
          
 
@@ -71,18 +72,24 @@ rule index:
     input:
         dna = DNA
     output:
-        index = join(dirname(DNA), rstrip(DNA, '.fa') + '.rev.1.bt2'),
-        bt2i = join(dirname(DNA), rstrip(DNA, '.fa') + '.ok')
+        index = join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '.rev.1.bt2'),
+        bt2i = join(HOME_DIR, rstrip(DNA, '.fa') + '.ok')
     log:
-        join(dirname(DNA), 'bt2.index.log')
+        join(HOME_DIR, 'logs', 'bt2.index.log')
     benchmark:
-        join(dirname(DNA), 'bt2.index.benchmark.tsv')
+        join(HOME_DIR, 'logs', 'bt2.index.benchmark.tsv')
     message: 
         """--- Building bowtie2 genome index """
     run:
-        shell('samtools faidx {input.dna}')
-        shell('bowtie2-build {input.dna} ' + join(dirname(DNA), rstrip(DNA, '.fa')) + ' > {log} 2>&1')
-        shell('touch ' + join(dirname(DNA), rstrip(DNA, '.fa') + '.ok'))
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
+              ' && cp {input.dna} ' + join(WORK_DIR, USER, JOB_ID) +
+              ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
+              ' && samtools faidx {input.dna}')
+        shell('bowtie2-build {input.dna} ' + rstrip(DNA, '.fa') + ' > {log} 2>&1')
+        shell('mkdir ' + join(HOME_DIR, 'index'))
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID) + '/* ' + join(HOME_DIR, 'index'))
+        shell('touch ' + join(HOME_DIR, rstrip(DNA, '.fa') + '.ok'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
 # Rule to check PE read quality
@@ -120,7 +127,7 @@ rule Bowtie2:
         r2 = lambda wildcards: FILES[wildcards.sample]['R2'],
         idx = rules.index.output.bt2i
     output: 
-        bam = join(OUT_DIR, 'Bowtie2', '{sample}', 'csorted.bowtie2.bam')
+        bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     params: 
         gtf = GTF
     log:
@@ -132,17 +139,17 @@ rule Bowtie2:
     run: 
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(dirname(DNA), rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && bowtie2'                                     
                 ' -p 16'   
-                ' -x ' + os.path.basename(join(dirname(DNA), rstrip(DNA, '.fa'))) +                    
+                ' -x ' + os.path.basename(join(WORK_DIR, USER, JOB_ID, rstrip(DNA, '.fa'))) +                    
                 ' -1 {wildcards.sample}.R1.fq.gz' 
                 ' -2 {wildcards.sample}.R2.fq.gz'
                 ' | samtools view -bS - > bowtie2.bam'
                 ' > {log} 2>&1')
         shell('samtools sort bowtie2.bam -o csorted.bowtie2.bam')
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}', 'csorted.bowtie2.bam')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}', 'csorted.bowtie2.bam'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
@@ -150,9 +157,13 @@ rule Bowtie2:
 rule mpileup_fasta:
     input:
         dna = DNA,
-        bam = rules.Bowtie2.output.bam
+        bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     output:
-        fasta = join(OUT_DIR, 'genome_fasta', '{sample}' + '.fasta')
+        fasta = join(OUT_DIR, 'CDS', '{sample}' + '.CDS.fasta')
+    params:
+        cds = CDS,
+        bed = BED,
+        gtf = GTF
     log:
         pileup = join(OUT_DIR, 'genome_fasta', 'logs', '{sample}' + '.log')
     benchmark:
@@ -162,22 +173,24 @@ rule mpileup_fasta:
     run:
         # Extract a sequence for each transcript in the GTF file.
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp {input.bam} ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(dirname(DNA), rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
-                ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && samtools mpileup'
-                ' -uf ' + os.path.basename(join(dirname(DNA), rstrip(DNA, '.fa'))) + 
-                ' {input.bam}'
-                ' | bcftools call -c | vcfutils.pl vcf2fq > {wildcards.sample}.fq')
-        shell('seqtk seq -A {wildcards.sample}.fq > {wildcards.sample}.fasta')
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.fasta') + ' ' + join(OUT_DIR, 'genome_fasta')
+                ' && cp ' + join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.bam} {params.cds} {params.bed} {params.gtf} ' + join(WORK_DIR, USER, JOB_ID) +
+                ' && cd ' + join(WORK_DIR, USER, JOB_ID))
+        shell('while read -r i; do'
+                    ' grep $i {params.bed} | grep CDS | samtools mpileup -u -l - -f {input.dna} {input.bam}'
+                    ' | bcftools call -c | vcfutils.pl vcf2fq | seqtk seq -A /dev/stdin/ > $i.fa' 
+                    ' && grep $i {params.gtf} | grep CDS | gffread - -g $i.fa -x $i.CDS.fa'
+                    ' && cat $i.CDS.fa >> {wildcards.sample}.CDS.fasta'
+                    ' && rm $i.fa.fai $i.fa $i.CDS.fa ;'
+            ' done < {cds')
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.CDS.fasta') + ' ' + join(OUT_DIR, 'CDS'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
 ## Rule to collate fastQC and Bowtie2 outputs with multiQC
 rule multiQC:
     input:
-        expand(join(OUT_DIR, 'Bowtie2', '{sample}', 'csorted.bowtie2.bam'), sample = SAMPLES),
+        expand(join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'), sample = SAMPLES),
         expand(join(OUT_DIR, 'fastQC', '{sample}', '{sample}' + '.R2_fastqc.html'), sample = SAMPLES)
     output:
         file = join(OUT_DIR, 'MultiQC', 'multiqc_report.html')
@@ -194,17 +207,3 @@ rule multiQC:
                 ' -f'
                 ' -o ' + join(OUT_DIR, 'MultiQC') + ' -d -dd 2 -l ' + join(OUT_DIR, 'summary_files.txt') +
                 ' > {log} 2>&1')
-
-## Rule to extract CDS sequences from genome fasta
-rule gffread:
-	input:
-		fasta = join(OUT_DIR, 'genome_fasta', '{sample}' + 'fasta')
-	params:
-		gtf = GTF
-	log:
-        join(OUT_DIR, 'Bowtie2', '{sample}', 'bowtie2.log')
-    benchmark:
-        join(OUT_DIR, 'Bowtie2', '{sample}', 'benchmark.tsv')
-    message: 
-        """--- Mapping PE sample "{wildcards.sample}" with Bowtie2."""
-    run: 
