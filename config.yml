@@ -1,13 +1,14 @@
 # Path to an uncompressed FASTA file with all chromosome sequences.
-DNA: '/home/ya76/SnakeMakeTuneUp/genome/chr19.fa'
+DNA: '/home/ya76/Aedes_aegypti_data/AaeL3/genome/AaegL3.fa'
 
-# Path to an uncompressed GTF file with all gene annotations.
-GTF: '/home/ya76/SnakeMakeTuneUp/annotations/gtf/GRCm38.83.chr19.gtf'
+# Path to an uncompressed annotation files.
+GTF: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/AaegL3.4.gtf'
+BED: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/AaegL3.4.bed'
+CDS: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/AaegL3.4.transcript.list'
 
 # Path to a folder where final files will be written.
-OUT_DIR: '/fs/cbsufsrv5/data1/ya76/sampleSnake/output'
-HOME_DIR: '/home/ya76/SnakeMakeTuneUp/'
+OUT_DIR: '/fs/cbsufsrv5/data1/ya76/Aedes.Aegypti/Jiggins.Exomes/Transcripts_seqs'
+HOME_DIR: '/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics'
 
 # Path to a JSON file with samples and their corresponding FASTQ files.
-PE_SAMPLES_JSON: '/home/ya76/SnakeMakeTuneUp/samples_pe.json'
-SE_SAMPLES_JSON: '/home/ya76/SnakeMakeTuneUp/samples_se.json'
+SAMPLES_JSON: '/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/samples_pe.json'
