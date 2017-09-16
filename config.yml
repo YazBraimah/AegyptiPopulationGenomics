@@ -4,10 +4,10 @@ DNA: '/home/ya76/Aedes_aegypti_data/AaeL3/genome/AaegL3.fa'
 # Path to an uncompressed annotation files.
 GTF: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/AaegL3.4.gtf'
 BED: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/AaegL3.4.bed'
-CDS: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/AaegL3.4.transcript.list'
+CDS: '/home/ya76/Aedes_aegypti_data/AaeL3/annotation/CDS.list'
 
 # Path to a folder where final files will be written.
-OUT_DIR: '/fs/cbsufsrv5/data1/ya76/Aedes.Aegypti/Jiggins.Exomes/Transcripts_seqs'
+OUT_DIR: '/fs/cbsufsrv5/data1/ya76/Aedes.Aegypti/Jiggins.Exomes/Assembled_exome_seqs.SnakemakeOutput'
 HOME_DIR: '/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics'
 
 # Path to a JSON file with samples and their corresponding FASTQ files.

@@ -1,25 +1,16 @@
 {
     "__default__": {
         "q"         : "regular.q",
-        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/stdout/default.log",
+        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/cluster_logs/default.log",
         "jname"     : "sm.def",
         "cores"		: 4,
         "bl"		: 4,
         "memory"    : "8G",
-        "time"      : "6:00:00"
-    },
-    "index": {
-    	"q"         : "regular.q",
-        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/stdout/index.log",
-        "jname"     : "sm.index",
-        "cores"		: 8,
-        "bl"		: 8,
-        "memory"    : "16G",
-        "time"		: "03:00:00"
+        "time"      : "03:00:00"
     },
     "Bowtie2": {
         "q"         : "regular.q",
-        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/stdout/Bowtie2.log",
+        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/cluster_logs/Bowtie2.log",
         "jname"     : "sm.Bowtie2",
         "cores"     : 8,
         "bl"        : 8,
@@ -27,13 +18,13 @@
         "time"      : "12:00:00"
     },
 	"mpileup_fasta": {
-	   "q"          : "regular.q",
-        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/stdout/mpileup_fasta.log",
+	   "q"          : "long_term.q",
+        "output"    : "/home/ya76/GitHub_Repositories/AegyptiPopulationGenomics/cluster_logs/mpileup_fasta.log",
         "jname"     : "sm.mpileup",
-        "cores"		: 8,
-        "bl"		: 8,
-        "memory"    : "32G",
-        "time"		: "24:00:00"
+        "cores"		: 4,
+        "bl"		: 4,
+        "memory"    : "8G",
+        "time"		: "150:00:00"
 	}
 }
 
