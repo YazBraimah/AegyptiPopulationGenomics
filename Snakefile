@@ -9,7 +9,7 @@ import os
 from os.path import join, basename, dirname
 from os import getcwd
 from subprocess import check_output
-
+import subprocess
 ##--------------------------------------------------------------------------------------##
 ## Functions
 ##--------------------------------------------------------------------------------------##
@@ -34,6 +34,7 @@ configfile: 'config.yml'
 
 # Full path to an uncompressed FASTA file with all chromosome sequences.
 DNA = config['DNA']
+INDEX = config['INDEX']
 
 # Full path to an uncompressed GFF file with known gene annotations.
 GTF = config['GTF']
@@ -65,36 +66,10 @@ if not os.path.exists(OUT_DIR):
 ## Final expected output(s)
 rule all: 
     input: 
-      expand(join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam'), sample = SAMPLES),
-      expand(join(OUT_DIR, 'fastQC', '{sample}', '{sample}' + '.R2_fastqc.html'), sample = SAMPLES),
-      expand(join(OUT_DIR, 'CDS', '{sample}' + '.CDS.fasta'), sample = SAMPLES),
+      expand(join(OUT_DIR, 'CDS', '{sample}' + '.phase0.CDS.fasta'), sample = SAMPLES),
+      expand(join(OUT_DIR, 'CDS', '{sample}' + '.phase1.CDS.fasta'), sample = SAMPLES),
       join(OUT_DIR, 'MultiQC', 'multiqc_report.html')
          
-
-## Rule to generate bowtie2 genome index 
-rule index:
-    input:
-        dna = DNA
-    output:
-        index = join(HOME_DIR, 'index', rstrip(DNA, '.fa') + '.rev.1.bt2'),
-        bt2i = join(HOME_DIR, rstrip(DNA, '.fa') + '.ok')
-    log:
-        join(HOME_DIR, 'index', 'bt2.index.log')
-    benchmark:
-        join(HOME_DIR, 'index', 'bt2.index.benchmark.tsv')
-    message: 
-        """--- Building bowtie2 genome index """
-    run:
-        if not os.path.exists(join(HOME_DIR, 'index')):
-            os.makedirs(join(HOME_DIR, 'index'))
-
-        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) +
-              ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
-              ' && samtools faidx ' + DNA)
-        shell('bowtie2-build ' + DNA + ' ' + rstrip(DNA, '.fa')  + ' > {log} 2>&1')
-        shell('cp ' + join(dirname(DNA), '*') + ' ' + join(HOME_DIR, 'index'))
-        shell('touch ' + join(HOME_DIR, rstrip(DNA, '.fa') + '.ok'))
-        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
 # Rule to check PE read quality
@@ -130,8 +105,8 @@ rule Bowtie2:
     input:
         r1 = lambda wildcards: FILES[wildcards.sample]['R1'],
         r2 = lambda wildcards: FILES[wildcards.sample]['R2'],
-        idx = rules.index.output.index,
-        bt2i = join(HOME_DIR, rstrip(DNA, '.fa') + '.ok')
+        # idx = rules.index.output.index,
+        # bt2i = join(HOME_DIR, rstrip(DNA, '.fa') + '.ok')
     output: 
         bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     log:
@@ -143,7 +118,8 @@ rule Bowtie2:
     run: 
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && cp {input.r1} {input.r2} ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(HOME_DIR, 'index', rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(INDEX, '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(DNA + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
                 ' && cd ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && (bowtie2'                                     
                 ' -p 16'   
@@ -154,37 +130,108 @@ rule Bowtie2:
         shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{wildcards.sample}', '{wildcards.sample}' + '.csorted.bowtie2.bam'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
-
-# Rule for generating pileup and extracting consensus fasta
-rule mpileup_fasta:
+# Rule for phasing heterozygotes
+rule phase_hets:
     input:
         dna = DNA,
         bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.csorted.bowtie2.bam')
     output:
-        fasta = join(OUT_DIR, 'CDS', '{sample}' + '.CDS.fasta')
+        phase1 = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.0.bam'),
+        phase2 = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.1.bam'),
+        chimer = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.chimera.bam')
+    log:
+        join(OUT_DIR, 'Bowtie2', 'logs', '{sample}' + 'phase.log')
+    benchmark:
+        join(OUT_DIR, 'Bowtie2', 'logs', '{sample}' + 'phase.benchmark.tsv')
+    message: 
+        "--- Phasing heterozygotes for sample {wildcards.sample}"
+    run:
+        # Extract a sequence for each transcript in the GTF file.
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && cp ' + join(INDEX, '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(DNA + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.bam} ' + join(WORK_DIR, USER, JOB_ID))
+        shell('cd ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && samtools phase'
+                ' -b {wildacards.sample}.phased'
+                ' -Q 20'
+                ' -D 200'
+                ' --reference ' + os.path.basename(DNA) +
+                ' {wildcards.sample}.csorted.bowtie2.bam')  
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phased*') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
+
+
+# Rule for generating pileup and extracting consensus fasta
+rule mpileup_fasta_phase0:
+    input:
+        dna = DNA,
+        bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.0.bam')
+    output:
+        fasta = join(OUT_DIR, 'CDS', '{sample}' + '.phase0.CDS.fasta')
     params:
         cds = CDS,
         bed = BED,
         gtf = GTF
     log:
-        join(OUT_DIR, 'CDS', 'logs', '{sample}' + '.log')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase0.log')
     benchmark:
-        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'benchmark.tsv')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase0.benchmark.tsv')
     message: 
-        "--- Generating pileup and extracting genome consensus fasta"
+        "--- Generating pileup and extracting phase0 genome consensus fasta for sample {wildacards.sample}"
     run:
         # Extract a sequence for each transcript in the GTF file.
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
-                ' && cp ' + join(HOME_DIR, 'index', rstrip(os.path.basename(DNA), '.fa') + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(INDEX, '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(DNA + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
                 ' && cp {input.bam} {params.cds} {params.bed} {params.gtf} ' + join(WORK_DIR, USER, JOB_ID))
         transcripts = [line.strip('\n') for line in open(CDS)]
         for line in transcripts:
-            shell('cd ' + join(WORK_DIR, USER, JOB_ID) + ' && grep {line} ' + os.path.basename(BED) + ' | grep CDS | samtools mpileup -u -l - -f ' + os.path.basename(DNA) + ' {wildcards.sample}.csorted.bowtie2.bam'
+            try:
+                shell('cd ' + join(WORK_DIR, USER, JOB_ID) + ' && grep {line} ' + os.path.basename(BED) + ' | grep CDS | samtools mpileup -u -l - -f ' + os.path.basename(DNA) + ' {wildcards.sample}.phased.0.bam'
                     ' | bcftools call -c | vcfutils.pl vcf2fq | seqtk seq -A /dev/stdin/ > {line}.fa' 
                     ' && grep {line} ' + os.path.basename(GTF) + ' | grep CDS | gffread - -g {line}.fa -x {line}.CDS.fa'
-                    ' && cat {line}.CDS.fa >> ' +  join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.CDS.fasta') +
+                    ' && cat {line}.CDS.fa >> ' +  join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phase0.CDS.fasta') +
                     ' && rm {line}.fa.fai {line}.fa {line}.CDS.fa')
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.CDS.fasta') + ' ' + join(OUT_DIR, 'CDS'))
+            except Exception:
+                continue
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phase0.CDS.fasta') + ' ' + join(OUT_DIR, 'CDS'))
+        shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
+
+# Rule for generating pileup and extracting consensus fasta
+rule mpileup_fasta_phase1:
+    input:
+        dna = DNA,
+        bam = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.1.bam')
+    output:
+        fasta = join(OUT_DIR, 'CDS', '{sample}' + '.phase1.CDS.fasta')
+    params:
+        cds = CDS,
+        bed = BED,
+        gtf = GTF
+    log:
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase1.log')
+    benchmark:
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase1.benchmark.tsv')
+    message: 
+        "--- Generating pileup and extracting phase1 genome consensus fasta for sample {wildacards.sample}"
+    run:
+        # Extract a sequence for each transcript in the GTF file.
+        shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
+                ' && cp ' + join(INDEX, '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp ' + join(DNA + '*') + ' ' +  join(WORK_DIR, USER, JOB_ID) +
+                ' && cp {input.bam} {params.cds} {params.bed} {params.gtf} ' + join(WORK_DIR, USER, JOB_ID))
+        transcripts = [line.strip('\n') for line in open(CDS)]
+        for line in transcripts:
+            try:
+                shell('cd ' + join(WORK_DIR, USER, JOB_ID) + ' && grep {line} ' + os.path.basename(BED) + ' | grep CDS | samtools mpileup -u -l - -f ' + os.path.basename(DNA) + ' {wildcards.sample}.phased.1.bam'
+                    ' | bcftools call -c | vcfutils.pl vcf2fq | seqtk seq -A /dev/stdin/ > {line}.fa' 
+                    ' && grep {line} ' + os.path.basename(GTF) + ' | grep CDS | gffread - -g {line}.fa -x {line}.CDS.fa'
+                    ' && cat {line}.CDS.fa >> ' +  join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phase1.CDS.fasta') +
+                    ' && rm {line}.fa.fai {line}.fa {line}.CDS.fa')
+            except Exception:
+                continue
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phase1.CDS.fasta') + ' ' + join(OUT_DIR, 'CDS'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
