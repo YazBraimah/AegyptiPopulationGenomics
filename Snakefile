@@ -125,7 +125,7 @@ rule Bowtie2:
                 ' -p 16'   
                 ' -x ' + os.path.basename(rstrip(DNA, '.fa')) +                    
                 ' -1 {wildcards.sample}.R1.fq.gz' 
-                ' -2 {wildcards.sample}.R2.fq.gz) 2>{log}'
+                ' -2 {wildcards.sample}.R2.fq.gz)> {log} 2>&1'
                 ' | samtools sort -@ 8 -o csorted.bowtie2.bam -')
         shell('mv ' + join(WORK_DIR, USER, JOB_ID, 'csorted.bowtie2.bam') + ' ' + join(OUT_DIR, 'Bowtie2', '{wildcards.sample}', '{wildcards.sample}' + '.csorted.bowtie2.bam'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
@@ -140,11 +140,11 @@ rule phase_hets:
         phase2 = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.1.bam'),
         chimer = join(OUT_DIR, 'Bowtie2', '{sample}', '{sample}' + '.phased.chimera.bam')
     log:
-        join(OUT_DIR, 'Bowtie2', 'logs', '{sample}' + 'phase.log')
+        join(OUT_DIR, 'Bowtie2', 'logs', '{sample}' + '.phase.log')
     benchmark:
-        join(OUT_DIR, 'Bowtie2', 'logs', '{sample}' + 'phase.benchmark.tsv')
+        join(OUT_DIR, 'Bowtie2', 'logs', '{sample}' + '.phase.benchmark.tsv')
     message: 
-        "--- Phasing heterozygotes for sample {wildcards.sample}"
+        """--- Phasing heterozygotes for sample "{wildcards.sample}". """
     run:
         # Extract a sequence for each transcript in the GTF file.
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
@@ -153,12 +153,12 @@ rule phase_hets:
                 ' && cp {input.bam} ' + join(WORK_DIR, USER, JOB_ID))
         shell('cd ' + join(WORK_DIR, USER, JOB_ID) + 
                 ' && samtools phase'
-                ' -b {wildacards.sample}.phased'
+                ' -b {wildcards.sample}.phased'
                 ' -Q 20'
                 ' -D 200'
                 ' --reference ' + os.path.basename(DNA) +
-                ' {wildcards.sample}.csorted.bowtie2.bam')  
-        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phased*') + ' ' + join(OUT_DIR, 'Bowtie2', '{sample}'))
+                ' {wildcards.sample}.csorted.bowtie2.bam > {log} 2>&1')  
+        shell('mv ' + join(WORK_DIR, USER, JOB_ID, '{wildcards.sample}.phased*') + ' ' + join(OUT_DIR, 'Bowtie2', '{wildcards.sample}'))
         shell('rm -r ' + join(WORK_DIR, USER, JOB_ID))
 
 
@@ -174,11 +174,11 @@ rule mpileup_fasta_phase0:
         bed = BED,
         gtf = GTF
     log:
-        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase0.log')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + '.phase0.log')
     benchmark:
-        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase0.benchmark.tsv')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + '.phase0.benchmark.tsv')
     message: 
-        "--- Generating pileup and extracting phase0 genome consensus fasta for sample {wildacards.sample}"
+        "--- Generating pileup and extracting phase0 genome consensus fasta for sample {wildcards.sample}"
     run:
         # Extract a sequence for each transcript in the GTF file.
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
@@ -210,11 +210,11 @@ rule mpileup_fasta_phase1:
         bed = BED,
         gtf = GTF
     log:
-        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase1.log')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + '.phase1.log')
     benchmark:
-        join(OUT_DIR, 'CDS', 'logs', '{sample}' + 'phase1.benchmark.tsv')
+        join(OUT_DIR, 'CDS', 'logs', '{sample}' + '.phase1.benchmark.tsv')
     message: 
-        "--- Generating pileup and extracting phase1 genome consensus fasta for sample {wildacards.sample}"
+        "--- Generating pileup and extracting phase1 genome consensus fasta for sample {wildcards.sample}"
     run:
         # Extract a sequence for each transcript in the GTF file.
         shell('mkdir -p ' + join(WORK_DIR, USER, JOB_ID) + 
